@@ -368,7 +368,8 @@ get_btrfs_fs_prefix (const char *mount_path)
 	ret[1+namelen] = '\0';
     }
   if (!ret)
-    return xstrdup ("/");
+    ret = xstrdup ("/");
+  close (fd);
   return ret;
 }
 
