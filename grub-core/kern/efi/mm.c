@@ -49,6 +49,12 @@ static grub_efi_uintn_t finish_desc_size;
 static grub_efi_uint32_t finish_desc_version;
 int grub_efi_is_finished = 0;
 
+struct efi_allocation {
+	grub_uint64_t start_addr;
+	grub_uint64_t pages;
+} efi_allocated_memory[16];
+unsigned int efi_allocated_memory_idx = 0;
+
 /* Allocate pages below a specified address */
 void *
 grub_efi_allocate_pages_max (grub_efi_physical_address_t max,
@@ -440,6 +446,13 @@ add_memory_regions (grub_efi_memory_descriptor_t *memory_map,
 		    (void *) ((grub_addr_t) start),
 		    (unsigned) pages);
 
+      /* Track up to 16 regions that we allocate from */
+      if (efi_allocated_memory_idx < ARRAY_SIZE(efi_allocated_memory)) {
+        efi_allocated_memory[efi_allocated_memory_idx].start_addr = start;
+        efi_allocated_memory[efi_allocated_memory_idx].pages = pages;
+        efi_allocated_memory_idx++;
+      }
+
       grub_mm_init_region (addr, PAGES_TO_BYTES (pages));
 
       required_pages -= pages;
@@ -449,6 +462,17 @@ add_memory_regions (grub_efi_memory_descriptor_t *memory_map,
 
   if (required_pages > 0)
     grub_fatal ("too little memory");
+}
+
+void
+grub_efi_memory_fini (void)
+{
+  unsigned int i;
+
+  for (i = 0; i < efi_allocated_memory_idx; i++) {
+    grub_efi_free_pages (efi_allocated_memory[i].start_addr,
+                         efi_allocated_memory[i].pages);
+  }
 }
 
 #if 0
