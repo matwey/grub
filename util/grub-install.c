@@ -66,6 +66,7 @@ static int force_file_id = 0;
 static char *disk_module = NULL;
 static char *efidir = NULL;
 static char *macppcdir = NULL;
+static char *zipldir = NULL;
 static int force = 0;
 static int have_abstractions = 0;
 static int have_cryptodisk = 0;
@@ -107,6 +108,7 @@ enum
     OPTION_NO_BOOTSECTOR,
     OPTION_NO_RS_CODES,
     OPTION_MACPPC_DIRECTORY,
+    OPTION_ZIPL_DIRECTORY,
     OPTION_LABEL_FONT,
     OPTION_LABEL_COLOR,
     OPTION_LABEL_BGCOLOR,
@@ -180,6 +182,11 @@ argp_parser (int key, char *arg, struct argp_state *state)
     case OPTION_EFI_DIRECTORY:
       free (efidir);
       efidir = xstrdup (arg);
+      return 0;
+
+    case OPTION_ZIPL_DIRECTORY:
+      free (zipldir);
+      zipldir = xstrdup (arg);
       return 0;
 
     case OPTION_DISK_MODULE:
@@ -299,6 +306,8 @@ static struct argp_option options[] = {
    N_("use DIR as the EFI System Partition root."), 2},
   {"macppc-directory", OPTION_MACPPC_DIRECTORY, N_("DIR"), 0,
    N_("use DIR for PPC MAC install."), 2},
+  {"zipl-directory", OPTION_ZIPL_DIRECTORY, N_("DIR"), 0,
+   N_("use DIR as the zIPL Boot Partition root."), 2},
   {"label-font", OPTION_LABEL_FONT, N_("FILE"), 0, N_("use FILE as font for label"), 2},
   {"label-color", OPTION_LABEL_COLOR, N_("COLOR"), 0, N_("use COLOR for label"), 2},
   {"label-bgcolor", OPTION_LABEL_BGCOLOR, N_("COLOR"), 0, N_("use COLOR for label background"), 2},
@@ -325,6 +334,8 @@ get_default_platform (void)
    return "arm64-efi";
 #elif defined (__amd64__) || defined (__x86_64__) || defined (__i386__)
    return grub_install_get_default_x86_platform ();
+#elif defined (__s390x__)
+   return "s390x-emu";
 #else
    return NULL;
 #endif
@@ -484,6 +495,8 @@ have_bootdev (enum grub_install_plat pl)
 
     case GRUB_INSTALL_PLATFORM_I386_XEN:
     case GRUB_INSTALL_PLATFORM_X86_64_XEN:
+
+    case GRUB_INSTALL_PLATFORM_S390X_EMU:
       return 0;
 
       /* pacify warning.  */
@@ -895,6 +908,7 @@ main (int argc, char *argv[])
     case GRUB_INSTALL_PLATFORM_ARM_UBOOT:
     case GRUB_INSTALL_PLATFORM_I386_XEN:
     case GRUB_INSTALL_PLATFORM_X86_64_XEN:
+    case GRUB_INSTALL_PLATFORM_S390X_EMU:
       break;
 
     case GRUB_INSTALL_PLATFORM_I386_QEMU:
@@ -940,6 +954,7 @@ main (int argc, char *argv[])
     case GRUB_INSTALL_PLATFORM_MIPS_QEMU_MIPS:
     case GRUB_INSTALL_PLATFORM_I386_XEN:
     case GRUB_INSTALL_PLATFORM_X86_64_XEN:
+    case GRUB_INSTALL_PLATFORM_S390X_EMU:
       free (install_device);
       install_device = NULL;
       break;
@@ -1201,6 +1216,20 @@ main (int argc, char *argv[])
 	}
     }
 
+  if (platform == GRUB_INSTALL_PLATFORM_S390X_EMU)
+    {
+      if (!zipldir)
+	{
+	  char *d = grub_util_path_concat (2, bootdir, "zipl");
+	  if (!grub_util_is_directory (d))
+	    {
+	      free (d);
+	      grub_util_error ("%s", _("cannot find zIPL directory"));
+	    }
+	  zipldir = d;
+	}
+    }
+
   grub_install_copy_files (grub_install_source_directory,
 			   grubdir, platform);
 
@@ -1445,6 +1474,7 @@ main (int argc, char *argv[])
 		  case GRUB_INSTALL_PLATFORM_ARM_UBOOT:
 		  case GRUB_INSTALL_PLATFORM_I386_XEN:
 		  case GRUB_INSTALL_PLATFORM_X86_64_XEN:
+		  case GRUB_INSTALL_PLATFORM_S390X_EMU:
 		    grub_util_warn ("%s", _("no hints available for your platform. Expect reduced performance"));
 		    break;
 		    /* pacify warning.  */
@@ -1557,6 +1587,10 @@ main (int argc, char *argv[])
       strcpy (mkimage_target, "sparc64-ieee1275-raw");
       core_name = "core.img";
       break;
+    case GRUB_INSTALL_PLATFORM_S390X_EMU:
+      strcpy (mkimage_target, "grub2-emu");
+      core_name = mkimage_target;
+      break;
       /* pacify warning.  */
     case GRUB_INSTALL_PLATFORM_MAX:
       break;
@@ -1572,6 +1606,7 @@ main (int argc, char *argv[])
 				       core_name);
   char *prefix = xasprintf ("%s%s", prefix_drive ? : "",
 			    relative_grubdir);
+  if (core_name != mkimage_target)
   grub_install_make_image_wrap (/* source dir  */ grub_install_source_directory,
 				/*prefix */ prefix,
 				/* output */ imgfile,
@@ -1610,6 +1645,10 @@ main (int argc, char *argv[])
 				       /* image target */ mkimage_target, 0);
       }
       break;
+
+    case GRUB_INSTALL_PLATFORM_S390X_EMU:
+      break;
+
     case GRUB_INSTALL_PLATFORM_ARM_EFI:
     case GRUB_INSTALL_PLATFORM_ARM64_EFI:
     case GRUB_INSTALL_PLATFORM_IA64_EFI:
@@ -1869,6 +1908,10 @@ main (int argc, char *argv[])
 	  grub_install_register_efi (efidir_grub_dev,
 				     efifile_path, efi_distributor);
 	}
+      break;
+
+    case GRUB_INSTALL_PLATFORM_S390X_EMU:
+      grub_install_zipl (zipldir, install_bootsector, force);
       break;
 
     case GRUB_INSTALL_PLATFORM_MIPSEL_LOONGSON:

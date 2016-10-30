@@ -350,6 +350,7 @@ program = {
   ldadd = grub-core/gnulib/libgnu.a;
   ldadd = '$(LIBINTL) $(LIBDEVMAPPER) $(LIBUTIL) $(LIBZFS) $(LIBNVPAIR) $(LIBGEOM)';
   cppflags = '-DGRUB_SETUP_FUNC=grub_util_bios_setup';
+  emu_condition = COND_NOT_s390x;
 };
 
 program = {
@@ -370,6 +371,7 @@ program = {
   ldadd = grub-core/gnulib/libgnu.a;
   ldadd = '$(LIBINTL) $(LIBDEVMAPPER) $(LIBUTIL) $(LIBZFS) $(LIBNVPAIR) $(LIBGEOM)';
   cppflags = '-DGRUB_SETUP_FUNC=grub_util_sparc_setup';
+  emu_condition = COND_NOT_s390x;
 };
 
 program = {
@@ -385,6 +387,7 @@ program = {
   ldadd = libgrubkern.a;
   ldadd = grub-core/gnulib/libgnu.a;
   ldadd = '$(LIBINTL) $(LIBDEVMAPPER) $(LIBUTIL) $(LIBGEOM)';
+  emu_condition = COND_NOT_s390x;
 };
 
 program = {
@@ -415,6 +418,7 @@ program = {
   ldadd = libgrubkern.a;
   ldadd = grub-core/gnulib/libgnu.a;
   ldadd = '$(LIBINTL) $(LIBDEVMAPPER) $(LIBZFS) $(LIBNVPAIR) $(LIBGEOM)';
+  emu_condition = COND_NOT_s390x;
 };
 
 data = {
@@ -620,7 +624,7 @@ program = {
   common = grub-core/disk/host.c;
 
   common = util/resolve.c;
-  enable = noemu;
+  emu_condition = COND_s390x;
   common = grub-core/kern/emu/argp_common.c;
   common = grub-core/osdep/init.c;
 
@@ -685,6 +689,38 @@ script = {
   common = util/grub-reboot.in;
   mansection = 8;
   installdir = sbin;
+};
+
+script = {
+  name = grub-zipl-setup;
+  installdir = sbin;
+  common = util/s390x/zipl2grub.pl.in;
+  enable = emu;
+  emu_condition = COND_s390x;
+};
+
+data = {
+  name = zipl2grub.conf.in;
+  common = util/s390x/zipl2grub.conf.in;
+  installdir = grubconf;
+  enable = emu;
+  emu_condition = COND_s390x;
+};
+
+script = {
+  name = dracut-module-setup.sh;
+  common = util/s390x/dracut-module-setup.sh.in;
+  enable = emu;
+  emu_condition = COND_s390x;
+  installdir = platform;
+};
+
+script = {
+  name = dracut-grub.sh;
+  common = util/s390x/dracut-grub2.sh.in;
+  enable = emu;
+  emu_condition = COND_s390x;
+  installdir = platform;
 };
 
 script = {
@@ -1281,6 +1317,7 @@ program = {
   ldadd = libgrubkern.a;
   ldadd = grub-core/gnulib/libgnu.a;
   ldadd = '$(LIBINTL) $(LIBDEVMAPPER) $(LIBZFS) $(LIBNVPAIR) $(LIBGEOM)';
+  emu_condition = COND_NOT_s390x;
 };
 
 program = {
