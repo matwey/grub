@@ -285,10 +285,19 @@ struct grub_DUID_LL
   grub_uint8_t hwaddr[6];
 } GRUB_PACKED;
 
+struct grub_dhcpv6_dns_servers {
+  grub_uint8_t addr[16];
+  grub_uint8_t next_addr[0];
+} GRUB_PACKED;
+
+//http://tools.ietf.org/html/rfc1035#section-3.1
+
 #define DHCPv6_REPLY 7
 #define DHCPv6_ADVERTISE 2
 #define DHCPv6_REQUEST 3
 #define OPTION_BOOTFILE_URL 59
+//RFC3646 http://tools.ietf.org/html/rfc3646
+#define OPTION_DNS_SERVERS 23
 #define OPTION_IA_NA 3
 #define OPTION_IAADDR 5
 #define OPTION_CLIENTID 1
@@ -441,6 +450,52 @@ find_address (const struct grub_net_dhcpv6_packet *packet)
 {
   const struct grub_dhcpv6_option* ia_na_hdr = find_dhcpv6_option (packet, OPTION_IA_NA);
   return get_iana_address (ia_na_hdr);
+}
+
+static void
+get_dns_address (const struct grub_net_dhcpv6_packet *packet, grub_net_network_level_address_t **addr, grub_uint16_t *naddr)
+{
+  const struct grub_dhcpv6_option* popt;
+  const struct grub_dhcpv6_dns_servers *dns;
+  grub_uint16_t len;
+  const grub_uint8_t *pa;
+  int i, ln;
+  grub_net_network_level_address_t *la;
+
+  if (addr)
+    *addr = NULL;
+
+  if (naddr)
+    *naddr = 0;
+
+  popt = find_dhcpv6_option (packet, OPTION_DNS_SERVERS);
+  if (!popt)
+    return;
+
+  len = grub_be_to_cpu16 (popt->len);
+  if ((len % 16) != 0)
+    {
+      grub_error (GRUB_ERR_IO, N_("invalid dns address length"));
+      return;
+    }
+
+  dns = (const struct grub_dhcpv6_dns_servers *)popt->data;
+
+  ln = len / 16;
+  la = grub_zalloc (sizeof (grub_net_network_level_address_t) * ln);
+
+  for (i = 0, pa = dns->addr; i < ln; i++, pa = dns->next_addr)
+    {
+      (la + i)->type = GRUB_NET_NETWORK_LEVEL_PROTOCOL_IPV6;
+      (la + i)->ipv6[0] = grub_get_unaligned64 (pa);
+      (la + i)->ipv6[1] = grub_get_unaligned64 (pa + 8);
+      (la + i)->option = DNS_OPTION_PREFER_IPV6;
+    }
+
+  *addr = la;
+  *naddr = ln;
+
+  return;
 }
 
 static void
@@ -682,7 +737,7 @@ grub_net_configure_by_dhcpv6_adv (const struct grub_net_dhcpv6_packet *v6_adv,
     }
   grub_memcpy (nb->data, opt_iana, len + 4);
 
-  err = grub_netbuff_push (nb, 6);
+  err = grub_netbuff_push (nb, 8);
   if (err)
     {
       grub_netbuff_free (nb);
@@ -691,9 +746,9 @@ grub_net_configure_by_dhcpv6_adv (const struct grub_net_dhcpv6_packet *v6_adv,
 
   popt = (struct grub_dhcpv6_option*) nb->data;
   popt->code = grub_cpu_to_be16 (OPTION_ORO);
-  popt->len = grub_cpu_to_be16 (2);
+  popt->len = grub_cpu_to_be16 (4);
   *((grub_uint16_t *) popt->data) = grub_cpu_to_be16 (OPTION_BOOTFILE_URL);
-
+  *((grub_uint16_t *) (popt->data + 2)) = grub_cpu_to_be16 (OPTION_DNS_SERVERS);
 
   err = grub_netbuff_push (nb, 6);
   if (err)
@@ -768,6 +823,8 @@ grub_net_configure_by_dhcpv6_reply (const char *name,
   char *proto;
   char *server_ip;
   char *boot_file;
+  grub_net_network_level_address_t *dns;
+  grub_uint16_t num_dns;
 
   if (device)
     *device = NULL;
@@ -787,6 +844,23 @@ grub_net_configure_by_dhcpv6_reply (const char *name,
     {
       grub_error (GRUB_ERR_IO, N_("DHCPv6 address not found"));
       return NULL;
+    }
+
+  get_dns_address (v6, &dns, &num_dns);
+
+  if (dns && num_dns)
+    {
+      int i;
+
+      for (i = 0; i < num_dns; ++i)
+	grub_net_add_dns_server (dns + i);
+
+      grub_free (dns);
+    }
+  else
+    {
+      if (grub_errno)
+	grub_print_error ();
     }
 
   find_bootfile_url (v6, &proto, &server_ip, &boot_file);
