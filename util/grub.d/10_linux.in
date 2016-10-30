@@ -191,6 +191,7 @@ machine=`uname -m`
 case "$machine" in
     i?86 | x86_64) klist="/boot/vmlinuz-* /vmlinuz-* /boot/kernel-*" ;;
     s390 | s390x)  klist="/boot/image-* /boot/kernel-*" ;;
+    aarch64)       klist="/boot/Image-* /boot/kernel-*" ;;
     *) klist="/boot/vmlinuz-* /boot/vmlinux-* /vmlinuz-* /vmlinux-* \
 		/boot/kernel-*" ;;
 esac
