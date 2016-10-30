@@ -37,6 +37,7 @@
 #include <grub/emu/misc.h>
 
 int verbosity;
+int kexecute;
 
 void
 grub_util_warn (const char *fmt, ...)
@@ -80,7 +81,7 @@ grub_util_error (const char *fmt, ...)
   vfprintf (stderr, fmt, ap);
   va_end (ap);
   fprintf (stderr, ".\n");
-  exit (1);
+  grub_exit ();
 }
 
 void *
@@ -138,6 +139,9 @@ xasprintf (const char *fmt, ...)
 void
 grub_exit (void)
 {
+#if defined (GRUB_KERNEL)
+  grub_reboot();
+#endif
   exit (1);
 }
 #endif
@@ -198,4 +202,16 @@ grub_util_load_image (const char *path, char *buf)
 		     strerror (errno));
 
   fclose (fp);
+}
+
+void
+grub_util_set_kexecute(void)
+{
+  kexecute++;
+}
+
+int
+grub_util_get_kexecute(void)
+{
+  return kexecute;
 }
