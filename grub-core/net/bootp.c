@@ -121,6 +121,11 @@ parse_dhcp_vendor (const char *name, const void *vend, int limit, int *mask)
                                      taglength);
           break;
 
+        case GRUB_NET_BOOTP_VENDOR_CLASS_IDENTIFIER:
+          grub_env_set_net_property (name, "vendor_class_identifier", (const char *) ptr,
+                                     taglength);
+	  break;
+
 	  /* If you need any other options please contact GRUB
 	     development team.  */
 	}
@@ -180,9 +185,83 @@ grub_net_configure_by_dhcp_ack (const char *name,
       grub_net_add_route (name, target, inter);
     }
 
+  if (size > OFFSET_OF (vendor, bp))
+    parse_dhcp_vendor (name, &bp->vendor, size - OFFSET_OF (vendor, bp), &mask);
+  grub_net_add_ipv4_local (inter, mask);
+
   if (size > OFFSET_OF (boot_file, bp))
-    grub_env_set_net_property (name, "boot_file", bp->boot_file,
+    {
+      char *cidvar;
+      const char *cid;
+      cidvar = grub_xasprintf ("net_%s_%s", name, "vendor_class_identifier");
+      cid = grub_env_get (cidvar);
+      grub_free (cidvar);
+
+      if (cid && grub_strcmp (cid, "HTTPClient") == 0)
+	{
+	  char *p, *q, *proto, *ip, *pa;
+	  grub_size_t len;
+	  p = grub_strstr (bp->boot_file, "://");
+	  q = NULL;
+	  if (p)
+             q = grub_strchr (p + grub_strlen("://"), '/');
+
+	  if (p && q)
+	    {
+	      len = p - bp->boot_file;
+	      proto = grub_malloc (len + 1);
+	      grub_memcpy (proto, bp->boot_file, len);
+	      proto[len] = '\0';
+	      len = q - (p + 3);
+	      ip = grub_malloc (len + 1);
+	      grub_memcpy (ip, p + 3, len);
+	      ip[len] = '\0';
+	      pa = grub_strdup (q);
+	      grub_env_set_net_property (name, "boot_file", pa, grub_strlen (pa));
+	      if (is_def)
+		{
+		  grub_net_default_server = grub_strdup (ip);
+		  grub_env_set ("net_default_interface", name);
+		  grub_env_export ("net_default_interface");
+		}
+	      if (device && !*device)
+		{
+		  *device = grub_xasprintf ("%s,%s", proto, ip);
+		  grub_print_error ();
+		}
+	      if (path)
+		{
+		  *path = grub_strdup (pa);
+		  grub_print_error ();
+      		  if (*path)
+		    {
+		      char *slash;
+		      slash = grub_strrchr (*path, '/');
+		      if (slash)
+			*slash = 0;
+		      else
+			**path = 0;
+		    }
+		}
+	      inter->dhcp_ack = grub_malloc (size);
+	      if (inter->dhcp_ack)
+		{
+		  grub_memcpy (inter->dhcp_ack, bp, size);
+		  inter->dhcp_acklen = size;
+		}
+	      else
+		grub_errno = GRUB_ERR_NONE;
+
+	      grub_free (proto);
+	      grub_free (ip);
+	      grub_free (pa);
+	      return inter;
+	    }
+	}
+      else
+	grub_env_set_net_property (name, "boot_file", bp->boot_file,
                                sizeof (bp->boot_file));
+    }
   if (is_def)
     grub_net_default_server = 0;
   if (is_def && !grub_net_default_server && bp->server_ip)
@@ -241,9 +320,6 @@ grub_net_configure_by_dhcp_ack (const char *name,
 	    **path = 0;
 	}
     }
-  if (size > OFFSET_OF (vendor, bp))
-    parse_dhcp_vendor (name, &bp->vendor, size - OFFSET_OF (vendor, bp), &mask);
-  grub_net_add_ipv4_local (inter, mask);
   
   inter->dhcp_ack = grub_malloc (size);
   if (inter->dhcp_ack)
@@ -256,54 +332,6 @@ grub_net_configure_by_dhcp_ack (const char *name,
 
   return inter;
 }
-
-struct grub_dhcpv6_option {
-  grub_uint16_t code;
-  grub_uint16_t len;
-  grub_uint8_t data[0];
-} GRUB_PACKED;
-
-
-struct grub_dhcpv6_iana_option {
-  grub_uint32_t iaid;
-  grub_uint32_t t1;
-  grub_uint32_t t2;
-  grub_uint8_t data[0];
-} GRUB_PACKED;
-
-struct grub_dhcpv6_iaaddr_option {
-  grub_uint8_t addr[16];
-  grub_uint32_t preferred_lifetime;
-  grub_uint32_t valid_lifetime;
-  grub_uint8_t data[0];
-} GRUB_PACKED;
-
-struct grub_DUID_LL
-{
-  grub_uint16_t type;
-  grub_uint16_t hw_type;
-  grub_uint8_t hwaddr[6];
-} GRUB_PACKED;
-
-struct grub_dhcpv6_dns_servers {
-  grub_uint8_t addr[16];
-  grub_uint8_t next_addr[0];
-} GRUB_PACKED;
-
-//http://tools.ietf.org/html/rfc1035#section-3.1
-
-#define DHCPv6_REPLY 7
-#define DHCPv6_ADVERTISE 2
-#define DHCPv6_REQUEST 3
-#define OPTION_BOOTFILE_URL 59
-//RFC3646 http://tools.ietf.org/html/rfc3646
-#define OPTION_DNS_SERVERS 23
-#define OPTION_IA_NA 3
-#define OPTION_IAADDR 5
-#define OPTION_CLIENTID 1
-#define OPTION_SERVERID 2
-#define OPTION_ORO 6
-#define OPTION_ELAPSED_TIME 8
 
 struct grub_dhcpv6_session
 {
@@ -554,19 +582,15 @@ find_bootfile_url (const struct grub_net_dhcpv6_packet *packet,
 
   ip_start = ip_end = NULL;
   ip_start = bootfile_url + grub_strlen(pr);
+  path = grub_strchr (ip_start, '/');
 
-  if (*ip_start != '[')
-    ip_start = NULL;
-  else
-    ip_end = grub_strchr (++ip_start, ']');
-
-  if (!ip_start || !ip_end)
+  if (!ip_start || !path)
     {
-      grub_error (GRUB_ERR_IO, N_("IPv6-address not in square brackets"));
+      grub_error (GRUB_ERR_IO, N_("invalid url format"));
       goto cleanup;
     }
 
-  ip_len = ip_end - ip_start;
+  ip_len = path - ip_start;
 
   if (proto)
     {
@@ -582,6 +606,13 @@ find_bootfile_url (const struct grub_net_dhcpv6_packet *packet,
 
   if (server_ip)
     {
+
+      if (ip_len > 2 && *ip_start == '[' && *(ip_start + ip_len - 1) == ']')
+	{
+	  ++ip_start;
+	  ip_len -= 2;
+	}
+
       *server_ip = grub_malloc (ip_len + 1);
 
       if (!*server_ip)
@@ -590,8 +621,6 @@ find_bootfile_url (const struct grub_net_dhcpv6_packet *packet,
       grub_memcpy (*server_ip, ip_start, ip_len);
       *(*server_ip + ip_len) = '\0';
     }
-
-  path = ip_end + 1;
 
   if (boot_file)
     {
@@ -747,8 +776,8 @@ grub_net_configure_by_dhcpv6_adv (const struct grub_net_dhcpv6_packet *v6_adv,
   popt = (struct grub_dhcpv6_option*) nb->data;
   popt->code = grub_cpu_to_be16 (OPTION_ORO);
   popt->len = grub_cpu_to_be16 (4);
-  *((grub_uint16_t *) popt->data) = grub_cpu_to_be16 (OPTION_BOOTFILE_URL);
-  *((grub_uint16_t *) (popt->data + 2)) = grub_cpu_to_be16 (OPTION_DNS_SERVERS);
+  grub_set_unaligned16 (popt->data, grub_cpu_to_be16 (OPTION_BOOTFILE_URL));
+  grub_set_unaligned16 (popt->data + 2, grub_cpu_to_be16 (OPTION_DNS_SERVERS));
 
   err = grub_netbuff_push (nb, 6);
   if (err)
@@ -766,7 +795,7 @@ grub_net_configure_by_dhcpv6_adv (const struct grub_net_dhcpv6_packet *v6_adv,
   if (elapsed > 0xffff)
     elapsed = 0xffff;
 
-  *((grub_uint16_t *) popt->data) = grub_cpu_to_be16 ((grub_uint16_t)elapsed);
+  grub_set_unaligned16 (popt->data, grub_cpu_to_be16 ((grub_uint16_t)elapsed));
 
   err = grub_netbuff_push (nb, 4);
   if (err)
@@ -1381,7 +1410,7 @@ grub_cmd_bootp6 (struct grub_command *cmd __attribute__ ((unused)),
 	  opt = (struct grub_dhcpv6_option *)nb->data;
 	  opt->code = grub_cpu_to_be16 (OPTION_ELAPSED_TIME);
 	  opt->len = grub_cpu_to_be16 (2);
-	  *((grub_uint16_t *) opt->data) = 0;
+          grub_set_unaligned16 (opt->data, 0);
 
 	  err = grub_netbuff_push (nb, sizeof(*duid) + 4);
 	  if (err)

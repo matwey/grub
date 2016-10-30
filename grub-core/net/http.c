@@ -312,24 +312,49 @@ http_establish (struct grub_file *file, grub_off_t offset, int initial)
   int i;
   struct grub_net_buff *nb;
   grub_err_t err;
+  grub_net_network_level_netaddress_t addr;
+  char *host;
+
+  grub_error_push ();
+  err = grub_net_resolve_net_address (file->device->net->server, &addr);
+  grub_error_pop ();
+
+  if (err == GRUB_ERR_NONE &&
+      addr.type == GRUB_NET_NETWORK_LEVEL_PROTOCOL_IPV6 &&
+      addr.ipv6.masksize == 128)
+    {
+      int hostsz = grub_strlen (file->device->net->server) + 3;
+      host = grub_malloc (hostsz);
+      if (host)
+	grub_snprintf (host, hostsz, "[%s]", file->device->net->server);
+    }
+  else
+    host = grub_strdup (file->device->net->server);
+
+  if (!host)
+    return grub_errno;
 
   nb = grub_netbuff_alloc (GRUB_NET_TCP_RESERVE_SIZE
 			   + sizeof ("GET ") - 1
 			   + grub_strlen (data->filename)
 			   + sizeof (" HTTP/1.1\r\nHost: ") - 1
-			   + grub_strlen (file->device->net->server)
+			   + grub_strlen (host)
 			   + sizeof ("\r\nUser-Agent: " PACKAGE_STRING
 				     "\r\n") - 1
 			   + sizeof ("Range: bytes=XXXXXXXXXXXXXXXXXXXX"
 				     "-\r\n\r\n"));
   if (!nb)
-    return grub_errno;
+    {
+      grub_free (host);
+      return grub_errno;
+    }
 
   grub_netbuff_reserve (nb, GRUB_NET_TCP_RESERVE_SIZE);
   ptr = nb->tail;
   err = grub_netbuff_put (nb, sizeof ("GET ") - 1);
   if (err)
     {
+      grub_free (host);
       grub_netbuff_free (nb);
       return err;
     }
@@ -340,6 +365,7 @@ http_establish (struct grub_file *file, grub_off_t offset, int initial)
   err = grub_netbuff_put (nb, grub_strlen (data->filename));
   if (err)
     {
+      grub_free (host);
       grub_netbuff_free (nb);
       return err;
     }
@@ -349,6 +375,7 @@ http_establish (struct grub_file *file, grub_off_t offset, int initial)
   err = grub_netbuff_put (nb, sizeof (" HTTP/1.1\r\nHost: ") - 1);
   if (err)
     {
+      grub_free (host);
       grub_netbuff_free (nb);
       return err;
     }
@@ -356,14 +383,15 @@ http_establish (struct grub_file *file, grub_off_t offset, int initial)
 	       sizeof (" HTTP/1.1\r\nHost: ") - 1);
 
   ptr = nb->tail;
-  err = grub_netbuff_put (nb, grub_strlen (file->device->net->server));
+  err = grub_netbuff_put (nb, grub_strlen (host));
   if (err)
     {
+      grub_free (host);
       grub_netbuff_free (nb);
       return err;
     }
-  grub_memcpy (ptr, file->device->net->server,
-	       grub_strlen (file->device->net->server));
+  grub_memcpy (ptr, host, grub_strlen (host));
+  grub_free (host);
 
   ptr = nb->tail;
   err = grub_netbuff_put (nb, 
@@ -381,9 +409,8 @@ http_establish (struct grub_file *file, grub_off_t offset, int initial)
       ptr = nb->tail;
       grub_snprintf ((char *) ptr,
 		     sizeof ("Range: bytes=XXXXXXXXXXXXXXXXXXXX-"
-			     "\r\n"
 			     "\r\n"),
-		     "Range: bytes=%" PRIuGRUB_UINT64_T "-\r\n\r\n",
+		     "Range: bytes=%" PRIuGRUB_UINT64_T "-\r\n",
 		     offset);
       grub_netbuff_put (nb, grub_strlen ((char *) ptr));
     }

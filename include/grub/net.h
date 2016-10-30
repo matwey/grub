@@ -433,6 +433,53 @@ struct grub_net_dhcpv6_packet
   grub_uint8_t dhcp_options[0];
 } GRUB_PACKED;
 
+struct grub_dhcpv6_option {
+  grub_uint16_t code;
+  grub_uint16_t len;
+  grub_uint8_t data[0];
+} GRUB_PACKED;
+
+struct grub_dhcpv6_iana_option {
+  grub_uint32_t iaid;
+  grub_uint32_t t1;
+  grub_uint32_t t2;
+  grub_uint8_t data[0];
+} GRUB_PACKED;
+
+struct grub_dhcpv6_iaaddr_option {
+  grub_uint8_t addr[16];
+  grub_uint32_t preferred_lifetime;
+  grub_uint32_t valid_lifetime;
+  grub_uint8_t data[0];
+} GRUB_PACKED;
+
+struct grub_DUID_LL
+{
+  grub_uint16_t type;
+  grub_uint16_t hw_type;
+  grub_uint8_t hwaddr[6];
+} GRUB_PACKED;
+
+struct grub_dhcpv6_dns_servers {
+  grub_uint8_t addr[16];
+  grub_uint8_t next_addr[0];
+} GRUB_PACKED;
+
+//http://tools.ietf.org/html/rfc1035#section-3.1
+
+#define DHCPv6_REPLY 7
+#define DHCPv6_ADVERTISE 2
+#define DHCPv6_REQUEST 3
+#define OPTION_BOOTFILE_URL 59
+//RFC3646 http://tools.ietf.org/html/rfc3646
+#define OPTION_DNS_SERVERS 23
+#define OPTION_IA_NA 3
+#define OPTION_IAADDR 5
+#define OPTION_CLIENTID 1
+#define OPTION_SERVERID 2
+#define OPTION_ORO 6
+#define OPTION_ELAPSED_TIME 8
+
 #define	GRUB_NET_BOOTP_RFC1048_MAGIC_0	0x63
 #define	GRUB_NET_BOOTP_RFC1048_MAGIC_1	0x82
 #define	GRUB_NET_BOOTP_RFC1048_MAGIC_2	0x53
@@ -448,6 +495,7 @@ enum
     GRUB_NET_BOOTP_DOMAIN = 0x0f,
     GRUB_NET_BOOTP_ROOT_PATH = 0x11,
     GRUB_NET_BOOTP_EXTENSIONS_PATH = 0x12,
+    GRUB_NET_BOOTP_VENDOR_CLASS_IDENTIFIER = 0x3C,
     GRUB_NET_BOOTP_END = 0xff
   };
 
