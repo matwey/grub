@@ -46,6 +46,11 @@ cat << EOF
 if [ -s \$prefix/grubenv ]; then
   load_env
 fi
+
+if [ "\${env_block}" ] ; then
+  load_env -f "\${env_block}"
+fi
+
 EOF
 if [ "`uname -m`" = "s390x" ]; then
     cat <<EOF
@@ -82,6 +87,9 @@ elif [ "\${next_entry}" ] ; then
    set default="\${next_entry}"
    set next_entry=
    save_env next_entry
+   if [ "\${env_block}" ] ; then
+     save_env -f "\${env_block}" next_entry
+   fi
    set boot_once=true
 else
    set default="${GRUB_DEFAULT}"
@@ -93,6 +101,9 @@ if [ "\${next_entry}" ] ; then
    set default="\${next_entry}"
    set next_entry=
    save_env next_entry
+   if [ "\${env_block}" ] ; then
+     save_env -f "\${env_block}" next_entry
+   fi
    set boot_once=true
 else
    set default="${GRUB_DEFAULT}"
