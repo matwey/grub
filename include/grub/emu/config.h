@@ -45,4 +45,11 @@ grub_util_load_config (struct grub_util_config *cfg);
 void
 grub_util_parse_config (FILE *f, struct grub_util_config *cfg, int simple);
 
+#ifdef __linux__
+
+char *
+grub_util_default_distributor (void);
+
+#endif
+
 #endif

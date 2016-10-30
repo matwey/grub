@@ -849,6 +849,15 @@ main (int argc, char *argv[])
 
   grub_util_load_config (&config);
 
+#ifdef __linux__
+  if (!config.grub_distributor || config.grub_distributor[0] == '\0')
+    {
+      if (config.grub_distributor)
+        grub_free (config.grub_distributor);
+      config.grub_distributor = grub_util_default_distributor ();
+    }
+#endif
+
   if (!bootloader_id && config.grub_distributor)
     {
       char *ptr;

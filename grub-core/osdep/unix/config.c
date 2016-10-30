@@ -61,6 +61,124 @@ grub_util_get_localedir (void)
   return LOCALEDIR;
 }
 
+#ifdef __linux__
+
+char*
+grub_util_default_distributor ()
+{
+  pid_t pid;
+  const char *argv[4];
+  char *script, *ptr;
+  char *cfgfile, *iptr;
+  FILE *f = NULL;
+  int fd;
+  char *def_dist = NULL;
+
+  cfgfile = grub_util_path_concat (2, GRUB_SYSCONFDIR, "os-release");
+  if (!grub_util_is_regular (cfgfile))
+    {
+      grub_free (cfgfile);
+      return NULL;
+    }
+
+  argv[0] = "sh";
+  argv[1] = "-c";
+
+  script = xmalloc (4 * strlen (cfgfile) + 300);
+
+  ptr = script;
+  memcpy (ptr, ". '", 3);
+  ptr += 3;
+  for (iptr = cfgfile; *iptr; iptr++)
+    {
+      if (*iptr == '\\')
+	{
+	  memcpy (ptr, "'\\''", 4);
+	  ptr += 4;
+	  continue;
+	}
+      *ptr++ = *iptr;
+    }
+
+  strcpy (ptr, "'; printf \"OS_RELEASE_NAME=%s\\nOS_RELEASE_VERSION=%s\\n\" "
+	  "\"$NAME\" \"$VERSION\"");
+
+  argv[2] = script;
+  argv[3] = '\0';
+
+  pid = grub_util_exec_pipe (argv, &fd);
+
+  if (pid)
+    f = fdopen (fd, "r");
+
+  if (f)
+    {
+      char *buffer = NULL;
+      size_t sz = 0;
+      char *name, *ver;
+
+      name = ver = NULL;
+
+      while (getline (&buffer, &sz, f) >= 0)
+	{
+	  for (ptr = buffer; *ptr && grub_isspace (*ptr); ptr++);
+	  if (grub_strncmp (ptr, "OS_RELEASE_NAME=",
+			sizeof ("OS_RELEASE_NAME=") - 1) == 0)
+	    {
+	      char *ptr2;
+	      ptr += sizeof ("OS_RELEASE_NAME=") - 1;
+	      name = grub_strdup (ptr);
+	      for (ptr2 = name + grub_strlen (name) - 1;
+		   ptr2 >= name && (*ptr2 == '\r' || *ptr2 == '\n'); ptr2--);
+	      ptr2[1] = '\0';
+	      continue;
+	    }
+	  if (grub_strncmp (ptr, "OS_RELEASE_VERSION=",
+			sizeof ("OS_RELEASE_VERSION=") - 1) == 0)
+	    {
+	      char *ptr2;
+	      ptr += sizeof ("OS_RELEASE_VERSION=") - 1;
+	      ver = grub_strdup (ptr);
+	      for (ptr2 = ver + grub_strlen (ver) - 1;
+		   ptr2 >= ver && (*ptr2 == '\r' || *ptr2 == '\n'); ptr2--);
+	      ptr2[1] = '\0';
+	      continue;
+	    }
+	}
+
+      fclose (f);
+
+      if (name && ver)
+	{
+	  def_dist = xmalloc (grub_strlen(name) + grub_strlen(ver) + 2);
+
+	  ptr = def_dist;
+	  grub_memcpy (ptr, name, grub_strlen (name));
+	  ptr += grub_strlen (name);
+	  *ptr++ = ' ';
+	  grub_strcpy (ptr, ver);
+	}
+
+      if (name)
+	grub_free (name);
+      if (ver)
+	grub_free (ver);
+    }
+
+  if (pid)
+    {
+      close (fd);
+      waitpid (pid, NULL, 0);
+    }
+
+  grub_free (script);
+  grub_free (cfgfile);
+
+  return def_dist;
+}
+
+#endif
+
 void
 grub_util_load_config (struct grub_util_config *cfg)
 {
