@@ -38,6 +38,7 @@
 #include <grub/emu/misc.h>
 
 int verbosity;
+int kexecute;
 
 void
 grub_util_warn (const char *fmt, ...)
@@ -81,7 +82,7 @@ grub_util_error (const char *fmt, ...)
   vfprintf (stderr, fmt, ap);
   va_end (ap);
   fprintf (stderr, ".\n");
-  exit (1);
+  grub_exit ();
 }
 
 void *
@@ -138,6 +139,9 @@ xasprintf (const char *fmt, ...)
 void
 grub_exit (void)
 {
+#if defined (GRUB_KERNEL)
+  grub_reboot();
+#endif
   exit (1);
 }
 
@@ -149,4 +153,16 @@ grub_get_time_ms (void)
   gettimeofday (&tv, 0);
 
   return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+
+void
+grub_util_set_kexecute(void)
+{
+  kexecute++;
+}
+
+int
+grub_util_get_kexecute(void)
+{
+  return kexecute;
 }
