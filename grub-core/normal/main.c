@@ -320,6 +320,37 @@ grub_cmd_normal (struct grub_command *cmd __attribute__ ((unused)),
 	  if (! config)
 	    goto quit;
 
+#ifdef GRUB_MACHINE_EFI
+          grub_file_t config_fd;
+
+          if ((config_fd = grub_file_open (config)))
+            grub_file_close (config_fd);
+
+          /* try again, this time upper case prefix path */
+          if (!config_fd)
+            {
+              char *s, *config_upper;
+              char *prefix_upper = grub_strdup(prefix);
+              if (! prefix_upper)
+                goto quit;
+              for (s = prefix_upper; *s && *s != ')'; s++);
+              for (; *s; s++) *s = grub_toupper(*s);
+              config_upper = grub_xasprintf ("%s/grub.cfg", prefix_upper);
+              if (! config_upper)
+                goto quit;
+              /* reset grub error state because noone else does... */
+              grub_errno = GRUB_ERR_NONE;
+              if ((config_fd = grub_file_open (config_upper)))
+                grub_file_close (config_fd);
+              if (config_fd)
+                {
+                  grub_env_set ("prefix", prefix_upper);
+                  grub_free (config);
+                  config = config_upper;
+                }
+            }
+#endif
+
 	  grub_enter_normal_mode (config);
 	  grub_free (config);
 	}
