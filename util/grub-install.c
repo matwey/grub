@@ -1556,6 +1556,42 @@ main (int argc, char *argv[])
       prefix_drive = xasprintf ("(%s)", grub_drives[0]);
     }
 
+#ifdef __linux__
+
+  if (config.is_suse_btrfs_snapshot_enabled
+      && grub_strncmp(grub_fs->name, "btrfs", sizeof ("btrfs") - 1) == 0)
+    {
+      char *subvol = NULL;
+      char *mount_path = NULL;
+
+      if (!load_cfg_f)
+        load_cfg_f = grub_util_fopen (load_cfg, "wb");
+      have_load_cfg = 1;
+
+      subvol = grub_util_get_btrfs_subvol (platdir, &mount_path);
+
+      if (subvol && mount_path)
+	{
+	  char *def_subvol;
+
+	  def_subvol = grub_util_get_btrfs_subvol ("/", NULL);
+
+	  if (def_subvol)
+	    {
+	      if (grub_strcmp (subvol, def_subvol) != 0)
+		fprintf (load_cfg_f, "btrfs-mount-subvol ($root) %s %s\n", mount_path, subvol);
+	      free (def_subvol);
+	    }
+	}
+
+      if (subvol)
+	free (subvol);
+      if (mount_path)
+	free (mount_path);
+    }
+
+#endif
+
   char mkimage_target[200];
   const char *core_name = NULL;
 
