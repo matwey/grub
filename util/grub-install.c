@@ -816,6 +816,8 @@ fill_core_services (const char *core_services)
   free (sysv_plist);
 }
 
+extern int use_relative_path_on_btrfs;
+
 int
 main (int argc, char *argv[])
 {
@@ -857,6 +859,9 @@ main (int argc, char *argv[])
       config.grub_distributor = grub_util_default_distributor ();
     }
 #endif
+
+  if (config.is_suse_btrfs_snapshot_enabled)
+    use_relative_path_on_btrfs = 1;
 
   if (!bootloader_id && config.grub_distributor)
     {
@@ -1343,6 +1348,16 @@ main (int argc, char *argv[])
       fprintf (load_cfg_f, "set debug='%s'\n",
 	      debug_image);
     }
+
+  if (config.is_suse_btrfs_snapshot_enabled
+      && grub_strncmp(grub_fs->name, "btrfs", sizeof ("btrfs") - 1) == 0)
+    {
+      if (!load_cfg_f)
+        load_cfg_f = grub_util_fopen (load_cfg, "wb");
+      have_load_cfg = 1;
+      fprintf (load_cfg_f, "set btrfs_relative_path='y'\n");
+    }
+
   char *prefix_drive = NULL;
   char *install_drive = NULL;
 
